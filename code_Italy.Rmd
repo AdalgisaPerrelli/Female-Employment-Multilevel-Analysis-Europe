@@ -1,0 +1,947 @@
+---
+title: "Tesi - Condizione occupazionale delle donne di età 20-49 anni residenti in Italia, Anno 2021"
+author: "Perrelli Adalgisa"
+date: "5/22/2023"
+output:
+  html_document: default
+  word_document: default
+---
+
+#Preparazione del dataset di lavoro
+\
+```{r message=FALSE, warning=FALSE}
+options(scipen = 999, digits = 3)
+library(Hmisc)
+library(psych)
+library(funModeling)
+library(plyr)
+library(dplyr)
+require(skimr)
+library(ggplot2)
+library(lme4)
+library(lmerTest)
+library(performance)
+library(caret)
+library(readxl)
+library(survey)
+library(VIM)
+library(coefplot)
+library(mgcv)
+library(lmtest)
+require(GGally)
+require(reshape2)
+require(compiler)
+require(parallel)
+require(boot)
+require(lattice)
+require(corrgram)
+```
+\
+
+Carico il dataset:
+\
+```{r}
+setwd("/Users/adalgisaperrelli/Desktop/Materiale_TESI/FILE_R")
+ds_IT <- read.csv("IT2021_y.csv", sep=",", dec=".", stringsAsFactors=TRUE)
+```
+\
+
+Converto la variabile *SEX* nel tipo corretto:
+\
+```{r}
+#Converto la variabile *SEX* in categoriale (valore 1 ---> "Male"; valore 2 ---> "Female"):
+ds_IT$SEX=as.factor(ds_IT$SEX)
+```
+\
+
+Riordino i livelli della variabile *AGE_GRP*:
+\
+```{r}
+ds_IT$AGE_GRP <- factor(ds_IT$AGE_GRP, levels = c("Y0-4", "Y5-9", "Y10-14", "Y15-19", "Y20-24", "Y25-29", "Y30-34", "Y35-39", "Y40-44", "Y45-49", "Y50-54", "Y55-59", "Y60-64", "Y65-69", "Y70-74", "Y_GE75"))
+```
+\
+
+Filtro le osservazioni del dataset secondo la variabile *SEX* e considero solo i record che presentano valore 2:
+\
+```{r}
+ds_IT_F <- subset(ds_IT, SEX == "2")
+
+ds_IT_M <- subset(ds_IT, SEX == "1")
+```
+\
+
+Seleziono le osservazioni che presentano età compresa tra 20 e 49 anni:
+\
+```{r}
+IT_F <- subset(ds_IT_F, AGE_GRP %in% c("Y20-24", "Y25-29", "Y30-34", "Y35-39", "Y40-44", "Y45-49"))
+```
+\
+
+Modifico i livelli della variabile *YEARESID* e creo la variabile *YEARESID_mod*:
+\
+```{r}
+IT_F$YEARESID_mod[IT_F$YEARESID == "999"] = "999"
+
+IT_F$YEARESID_mod[IT_F$YEARESID == "0"] = "0-4"
+IT_F$YEARESID_mod[IT_F$YEARESID == "1"] = "0-4"
+IT_F$YEARESID_mod[IT_F$YEARESID == "2"] = "0-4"
+IT_F$YEARESID_mod[IT_F$YEARESID == "3"] = "0-4"
+IT_F$YEARESID_mod[IT_F$YEARESID == "4"] = "0-4"
+
+IT_F$YEARESID_mod[IT_F$YEARESID == "5"] = "5-9"
+IT_F$YEARESID_mod[IT_F$YEARESID == "6"] = "5-9"
+IT_F$YEARESID_mod[IT_F$YEARESID == "7"] = "5-9"
+IT_F$YEARESID_mod[IT_F$YEARESID == "8"] = "5-9"
+IT_F$YEARESID_mod[IT_F$YEARESID == "9"] = "5-9"
+
+IT_F$YEARESID_mod[IT_F$YEARESID == "Y10-14"] = "10+"
+IT_F$YEARESID_mod[IT_F$YEARESID == "Y15-19"] = "10+"
+IT_F$YEARESID_mod[IT_F$YEARESID == "Y20-24"] = "10+"
+IT_F$YEARESID_mod[IT_F$YEARESID == "Y25-29"] = "10+"
+IT_F$YEARESID_mod[IT_F$YEARESID == "Y30-34"] = "10+"
+IT_F$YEARESID_mod[IT_F$YEARESID == "Y35-39"] = "10+"
+IT_F$YEARESID_mod[IT_F$YEARESID == "Y40-44"] = "10+"
+IT_F$YEARESID_mod[IT_F$YEARESID == "Y45-49"] = "10+"
+
+IT_F$YEARESID = NULL
+```
+\
+
+Modifico i livelli della variabile *HATLEVEL* e creo la variabile *HATLEVEL_mod*:
+\
+```{r}
+IT_F$HATLEVEL_mod[IT_F$HATLEVEL == "0"] = "lev0"
+
+IT_F$HATLEVEL_mod[IT_F$HATLEVEL == "100"] = "lev1"
+IT_F$HATLEVEL_mod[IT_F$HATLEVEL == "200"] = "lev1"
+
+IT_F$HATLEVEL_mod[IT_F$HATLEVEL == "343"] = "lev2"
+IT_F$HATLEVEL_mod[IT_F$HATLEVEL == "344"] = "lev2"
+IT_F$HATLEVEL_mod[IT_F$HATLEVEL == "353"] = "lev2"
+IT_F$HATLEVEL_mod[IT_F$HATLEVEL == "354"] = "lev2"
+
+IT_F$HATLEVEL_mod[IT_F$HATLEVEL == "450"] = "lev3"
+IT_F$HATLEVEL_mod[IT_F$HATLEVEL == "550"] = "lev3"
+
+IT_F$HATLEVEL_mod[IT_F$HATLEVEL == "600"] = "lev4"
+IT_F$HATLEVEL_mod[IT_F$HATLEVEL == "700"] = "lev4"
+IT_F$HATLEVEL_mod[IT_F$HATLEVEL == "800"] = "lev4"
+
+IT_F$HATLEVEL_mod[IT_F$HATLEVEL == "999"] = "NON APPLICABILE"
+
+IT_F$HATLEVEL = NULL
+```
+\
+
+Modifico i livelli della variabile *COUNTRYB* e creo la variabile *COUNTRYB_mod*:
+\
+```{r}
+IT_F$COUNTRYB_mod[IT_F$COUNTRYB == "AFR_N"] = "area1"
+IT_F$COUNTRYB_mod[IT_F$COUNTRYB == "AFR_OTH"] = "area1"
+
+IT_F$COUNTRYB_mod[IT_F$COUNTRYB == "AME_C_CRB"] = "area2"
+IT_F$COUNTRYB_mod[IT_F$COUNTRYB == "AME_N"] = "area2"
+IT_F$COUNTRYB_mod[IT_F$COUNTRYB == "AME_S"] = "area2"
+IT_F$COUNTRYB_mod[IT_F$COUNTRYB == "OCE"] = "area2"
+
+IT_F$COUNTRYB_mod[IT_F$COUNTRYB == "ASI_E"] = "area3"
+IT_F$COUNTRYB_mod[IT_F$COUNTRYB == "ASI_NME"] = "area3"
+IT_F$COUNTRYB_mod[IT_F$COUNTRYB == "ASI_SSE"] = "area3"
+
+IT_F$COUNTRYB_mod[IT_F$COUNTRYB == "EFTA"] = "area4"
+IT_F$COUNTRYB_mod[IT_F$COUNTRYB == "EU27_2020"] = "area4"
+IT_F$COUNTRYB_mod[IT_F$COUNTRYB == "EUR_NEU27_2020_NEFTA"] = "area4"
+
+IT_F$COUNTRYB_mod[IT_F$COUNTRYB == "NAT"] = "National"
+
+IT_F$COUNTRYB = NULL
+```
+\
+
+Modifico i livelli della variabile *HATFIELD* e creo la variabile *HATFIELD_mod*:
+\
+```{r}
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "1"] = "settore1"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "2"] = "settore1"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "3"] = "settore1"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "9"] = "settore1"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "11"] = "settore2"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "18"] = "settore2"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "21"] = "settore2"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "22"] = "settore2"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "23"] = "settore2"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "28"] = "settore2"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "31"] = "settore2"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "32"] = "settore2"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "38"] = "settore2"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "39"] = "settore2"
+
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "41"] = "settore3"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "42"] = "settore3"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "48"] = "settore3"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "49"] = "settore3"
+
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "51"] = "settore4"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "52"] = "settore4"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "53"] = "settore4"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "54"] = "settore4"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "58"] = "settore4"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "59"] = "settore4"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "61"] = "settore4"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "68"] = "settore4"
+
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "71"] = "settore5"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "72"] = "settore5"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "73"] = "settore5"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "78"] = "settore5"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "79"] = "settore5"
+
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "81"] = "settore6"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "82"] = "settore6"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "83"] = "settore6"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "84"] = "settore6"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "88"] = "settore6"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "89"] = "settore6"
+
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "91"] = "settore7"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "92"] = "settore7"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "98"] = "settore7"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "99"] = "settore7"
+
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "101"] = "settore8"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "103"] = "settore8"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "104"] = "settore8"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "108"] = "settore8"
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "109"] = "settore8"
+
+IT_F$HATFIELD_mod[IT_F$HATFIELD == "999"] = "NON APPLICABILE"
+
+IT_F$HATFIELD = NULL
+```
+\
+
+Modifico i livelli della variabile *CITIZENSHIP* e creo la variabile *CITIZENSHIP_mod*:
+\
+```{r}
+IT_F$CITIZENSHIP_mod[IT_F$CITIZENSHIP == "AFR_N"] = "area1"
+IT_F$CITIZENSHIP_mod[IT_F$CITIZENSHIP == "AFR_OTH"] = "area1"
+
+IT_F$CITIZENSHIP_mod[IT_F$CITIZENSHIP == "AME_C_CRB"] = "area2"
+IT_F$CITIZENSHIP_mod[IT_F$CITIZENSHIP == "AME_N"] = "area2"
+IT_F$CITIZENSHIP_mod[IT_F$CITIZENSHIP == "AME_S"] = "area2"
+IT_F$CITIZENSHIP_mod[IT_F$CITIZENSHIP == "OCE"] = "area2"
+
+IT_F$CITIZENSHIP_mod[IT_F$CITIZENSHIP == "ASI_E"] = "area3"
+IT_F$CITIZENSHIP_mod[IT_F$CITIZENSHIP == "ASI_NME"] = "area3"
+IT_F$CITIZENSHIP_mod[IT_F$CITIZENSHIP == "ASI_SSE"] = "area3"
+
+IT_F$CITIZENSHIP_mod[IT_F$CITIZENSHIP == "EFTA"] = "area4"
+IT_F$CITIZENSHIP_mod[IT_F$CITIZENSHIP == "EU27_2020"] = "area4"
+IT_F$CITIZENSHIP_mod[IT_F$CITIZENSHIP == "EUR_NEU27_2020_NEFTA"] = "area4"
+
+IT_F$CITIZENSHIP_mod[IT_F$CITIZENSHIP == "NAT"] = "National"
+
+IT_F$CITIZENSHIP_mod=as.factor(IT_F$CITIZENSHIP_mod)
+
+IT_F$CITIZENSHIP = NULL
+```
+\
+
+Aggrego le variabili *HHNBCH9TO11*, *HHNBCH12TO14* e *HHNBCH15TO17* e creo la variabile *HHNBCH9TO17*:
+\
+```{r}
+IT_F$HHNBCH9TO17 <- IT_F$HHNBCH9TO11 + IT_F$HHNBCH12TO14 + IT_F$HHNBCH15TO17
+```
+\
+
+Modifico i livelli della variabile *HHNBCHILD*:
+\
+```{r}
+IT_F$HHNBCHILD[IT_F$HHNBCHILD == "0"] = "0"
+IT_F$HHNBCHILD[IT_F$HHNBCHILD == "1"] = "1"
+IT_F$HHNBCHILD[IT_F$HHNBCHILD == "2"] = "2"
+IT_F$HHNBCHILD[IT_F$HHNBCHILD == "3"] = "3"
+IT_F$HHNBCHILD[IT_F$HHNBCHILD == "4"] = "4"
+IT_F$HHNBCHILD[IT_F$HHNBCHILD == "5"] = "5 o più"
+IT_F$HHNBCHILD[IT_F$HHNBCHILD == "6"] = "5 o più"
+IT_F$HHNBCHILD[IT_F$HHNBCHILD == "7"] = "5 o più"
+IT_F$HHNBCHILD[IT_F$HHNBCHILD == "8"] = "5 o più"
+IT_F$HHNBCHILD[IT_F$HHNBCHILD == "9"] = "5 o più"
+IT_F$HHNBCHILD[IT_F$HHNBCHILD == "10"] = "5 o più"
+```
+\
+
+Ricodifico le variabili nel tipo corretto, elimino le variabili che non verranno utilizzate per le analisi, modifico i livelli della variabile *EMPSTAT* e ordino le modalità delle variabili *AGE_GRP* e *YEARESID_mod*:
+\
+```{r}
+IT_F$REFYEAR=as.factor(IT_F$REFYEAR)
+IT_F$YEAR=as.factor(IT_F$YEAR)
+IT_F$HHLINK=as.factor(IT_F$HHLINK)
+IT_F$WKSTAT=as.factor(IT_F$WKSTAT)
+IT_F$ABSREAS=as.factor(IT_F$ABSREAS)
+IT_F$JATTACH=as.factor(IT_F$JATTACH)
+IT_F$NUMJOB=as.factor(IT_F$NUMJOB)
+IT_F$SEEKWORK=as.factor(IT_F$SEEKWORK)
+IT_F$WANTWORK=as.factor(IT_F$WANTWORK)
+IT_F$SEEKREAS=as.factor(IT_F$SEEKREAS)
+IT_F$WANTREAS=as.factor(IT_F$WANTREAS)
+IT_F$ACTMETNE=as.factor(IT_F$ACTMETNE)
+IT_F$WISHMORE=as.factor(IT_F$WISHMORE)
+IT_F$AVAILBLE=as.factor(IT_F$AVAILBLE)
+IT_F$AVAIREAS=as.factor(IT_F$AVAIREAS)
+IT_F$HOMEWORK=as.factor(IT_F$HOMEWORK)
+IT_F$STAPRO=as.factor(IT_F$STAPRO)
+IT_F$FTPT=as.factor(IT_F$FTPT)
+IT_F$TEMP=as.factor(IT_F$TEMP)
+IT_F$TEMPDUR=as.factor(IT_F$TEMPDUR)
+IT_F$TEMPREAS=as.factor(IT_F$TEMPREAS)
+IT_F$FTPTREAS=as.factor(IT_F$FTPTREAS)
+IT_F$VARITIME=as.factor(IT_F$VARITIME)
+IT_F$SUPVISOR=as.factor(IT_F$SUPVISOR)
+IT_F$LOOKOJ=as.factor(IT_F$LOOKOJ)
+IT_F$SEEKDUR=as.factor(IT_F$SEEKDUR)
+IT_F$NEEDCARE=as.factor(IT_F$NEEDCARE)
+IT_F$MAINSTAT=as.factor(IT_F$MAINSTAT)
+IT_F$EXISTPR=as.factor(IT_F$EXISTPR)
+IT_F$WAYJFOUN=as.factor(IT_F$WAYJFOUN)
+IT_F$FINDMETH=as.factor(IT_F$FINDMETH)
+IT_F$LEAVREAS=as.factor(IT_F$LEAVREAS)
+IT_F$SHIFTWK=as.factor(IT_F$SHIFTWK)
+IT_F$EVENWK=as.factor(IT_F$EVENWK)
+IT_F$NIGHTWK=as.factor(IT_F$NIGHTWK)
+IT_F$SATWK=as.factor(IT_F$SATWK)
+IT_F$SUNWK=as.factor(IT_F$SUNWK)
+IT_F$EDUC4WEEKS=as.factor(IT_F$EDUC4WEEKS)
+IT_F$REGISTER=as.factor(IT_F$REGISTER)
+IT_F$DEGURBA=as.factor(IT_F$DEGURBA)
+IT_F$TEMPAGCY=as.factor(IT_F$TEMPAGCY)
+IT_F$HHWKSTAT=as.factor(IT_F$HHWKSTAT)
+IT_F$HHCOMP=as.factor(IT_F$HHCOMP)
+IT_F$HHPARTNR=as.factor(IT_F$HHPARTNR)
+IT_F$HHCHILDR=as.factor(IT_F$HHCHILDR)
+IT_F$HHPARENT=as.factor(IT_F$HHPARENT)
+IT_F$DURUNE=as.factor(IT_F$DURUNE)
+IT_F$ILOSTAT=as.factor(IT_F$ILOSTAT)
+IT_F$HWWISH=as.numeric(IT_F$HWWISH)
+IT_F$YEARESID_mod=as.factor(IT_F$YEARESID_mod)
+IT_F$HATLEVEL_mod=as.factor(IT_F$HATLEVEL_mod)
+IT_F$COUNTRYB_mod=as.factor(IT_F$COUNTRYB_mod)
+IT_F$HATFIELD_mod=as.factor(IT_F$HATFIELD_mod)
+IT_F$CITIZENSHIP_mod=as.factor(IT_F$CITIZENSHIP_mod)
+IT_F$HHNBCH9TO17=as.numeric(IT_F$HHNBCH9TO17)
+
+
+IT_F$SEX <- NULL
+IT_F$AGE <- NULL
+IT_F$HHFATH <- NULL
+IT_F$HHMOTH <- NULL
+IT_F$NACE2_1D <- NULL
+IT_F$ISCO08_3D <- NULL
+IT_F$ISCO08_1D <- NULL
+IT_F$ESEG_2D <- NULL
+IT_F$ESEG_1D <- NULL
+IT_F$SIZEFIRM <- NULL
+IT_F$STAPRO2J <- NULL
+IT_F$NACE2_1D2J <- NULL
+IT_F$HATYEAR <- NULL
+IT_F$MSTARTWK <- NULL
+IT_F$MONTHPR <- NULL
+IT_F$LEAVCLAS <- NULL
+IT_F$STAPROPR <- NULL
+IT_F$NACE2_1DPR <- NULL
+IT_F$ISCO08_3DPR <- NULL
+IT_F$ISCO08_1DPR <- NULL
+IT_F$CONTRHRS <- NULL
+IT_F$ABSHOLID <- NULL
+IT_F$ABSILLINJ <- NULL
+IT_F$ABSOTHER <- NULL
+IT_F$EXTRAHRS <- NULL
+IT_F$HWACTUAL <- NULL
+IT_F$HWUSU2J <- NULL
+IT_F$HWACTU2J <- NULL
+IT_F$EDUCFED4 <- NULL
+IT_F$EDUCLEV4<- NULL
+IT_F$EDUCNFE4 <- NULL
+IT_F$EDUCFED12 <- NULL
+IT_F$EDUCLEV12<- NULL
+IT_F$EDUCNFE12 <- NULL
+IT_F$EDUC12MONTHS <- NULL
+IT_F$GENHEALTH <- NULL
+IT_F$GALI <- NULL
+IT_F$INCDECIL <- NULL
+IT_F$HHPERS <- NULL
+IT_F$QUARTER <- NULL
+IT_F$REFWEEK <- NULL
+IT_F$REFMONTH <- NULL
+IT_F$INTWEEK <- NULL
+IT_F$HHTYPE <- NULL
+IT_F$QHHNUM <- NULL
+IT_F$COEFFMOD <- NULL
+IT_F$COEFFHH <- NULL
+IT_F$COEFFHHAVG <- NULL
+IT_F$COEFF2Y <- NULL
+IT_F$INTWAVE <- NULL
+IT_F$INTQUEST <- NULL
+IT_F$MODE <- NULL
+IT_F$PROXY <- NULL
+IT_F$MIGREAS <- NULL
+IT_F$MAINCLNT <- NULL
+IT_F$HATWORK <- NULL
+IT_F$AHM2021_HATCNTR <- NULL
+IT_F$AHM2021_ESTQUAL <- NULL
+IT_F$AHM2021_HATPAR <- NULL
+IT_F$AHM2021_JOBSATISF <- NULL
+IT_F$AHM2021_DURFIJOB <- NULL
+IT_F$AHM2021_SKILLEQ <- NULL
+IT_F$AHM2021_DISCRIMI <- NULL
+IT_F$AHM2021_JOBOBSTA <- NULL
+IT_F$AHM2021_DURFIJOB <- NULL
+IT_F$AHM2021_PRKNLANG <- NULL
+IT_F$AHM2021_LANGHOST <- NULL
+IT_F$AHM2021_LANGCOUR <- NULL
+IT_F$HHAGEYG14 <- NULL
+IT_F$HHAGEYG <- NULL
+
+IT_F <- IT_F %>% mutate(EMPSTAT = recode(EMPSTAT, '1' = '1', '2' = '0'))
+IT_F$EMPSTAT=as.factor(IT_F$EMPSTAT)
+
+IT_F$AGE_GRP <- factor(IT_F$AGE_GRP, levels = c("Y20-24", "Y25-29", "Y30-34", "Y35-39", "Y40-44", "Y45-49"))
+IT_F$YEARESID_mod <- factor(IT_F$YEARESID_mod, levels = c("0-4", "5-9", "10+", "999"))
+
+#str(IT_F)
+```
+\
+
+Verifico la presenza di dati mancanti nel dataset:
+\
+```{r}
+sapply(IT_F, function(x)(sum(is.na(x))))
+
+for (col in names(IT_F)) {
+  if (sum(is.na(IT_F[[col]])) > 0) {
+    cat(col, ": ", sum(is.na(IT_F[[col]])), " missing values\n")
+  }
+}
+```
+\
+
+
+#MODELLI PER TABELLA TASSI E VALORI PERCENTUALI
+\
+```{r}
+mp0 <- xtabs(COEFFY ~ EMPSTAT, data=IT_F)
+prop.table(mp0)
+```
+\
+
+\
+```{r}
+mp1 <- xtabs(COEFFY ~ REGION_2D + EMPSTAT, data=IT_F)
+prop.table(mp1,1)
+```
+\
+
+\
+```{r}
+mp2 <- xtabs(COEFFY ~ AGE_GRP + EMPSTAT, data=IT_F)
+prop.table(mp2,1)
+```
+\
+
+\
+```{r}
+mp3 <- xtabs(COEFFY ~ HHNBCHILD + EMPSTAT, data=IT_F)
+prop.table(mp3,1)
+```
+\
+
+\
+```{r}
+mp4 <- xtabs(COEFFY ~ HHNBCH0TO2 + EMPSTAT, data=IT_F)
+prop.table(mp4,1)
+```
+\
+
+\
+```{r}
+mp5 <- xtabs(COEFFY ~ HHNBCH3TO5 + EMPSTAT, data=IT_F)
+prop.table(mp5,1)
+```
+\
+
+\
+```{r}
+mp6 <- xtabs(COEFFY ~ HHNBCH6TO8 + EMPSTAT, data=IT_F)
+prop.table(mp6,1)
+```
+\
+
+\
+```{r}
+mp7 <- xtabs(COEFFY ~ HHNBCH9TO17 + EMPSTAT, data=IT_F)
+prop.table(mp7,1)
+```
+\
+
+\
+```{r}
+mp8 <- xtabs(COEFFY ~ HHPARTNR + EMPSTAT, data=IT_F)
+prop.table(mp8,1)
+```
+\
+
+\
+```{r}
+mp9 <- xtabs(COEFFY ~ COUNTRYB_mod + EMPSTAT, data=IT_F)
+prop.table(mp9,1)
+```
+\
+
+\
+```{r}
+mp10 <- xtabs(COEFFY ~ HATLEVEL_mod + EMPSTAT, data=IT_F)
+prop.table(mp10,1)
+```
+\
+
+\
+```{r}
+mp11 <- xtabs(COEFFY ~ YEARESID_mod + EMPSTAT, data=IT_F)
+prop.table(mp11,1)
+```
+\
+
+\
+```{r}
+mp12 <- xtabs(COEFFY ~ SEEKWORK, data=IT_F)
+prop.table(mp12)
+```
+\
+
+\
+```{r}
+mp13 <- xtabs(COEFFY ~ WANTREAS, data=IT_F)
+prop.table(mp13)
+```
+\
+
+\
+```{r}
+mp14 <- xtabs(COEFFY ~ AGE_GRP + FTPT, data=IT_F)
+prop.table(mp14,1)
+```
+\
+
+\
+```{r}
+mp15 <- xtabs(COEFFY ~ STAPRO, data=IT_F)
+prop.table(mp15)
+```
+\
+
+\
+```{r}
+mp16 <- xtabs(COEFFY ~ AGE_GRP + TEMP, data=IT_F)
+prop.table(mp16,1)
+```
+\
+
+##Appendici
+\
+```{r}
+mp17 <- xtabs(COEFFY ~ SEEKREAS, data=IT_F)
+prop.table(mp17)
+```
+\
+
+\
+```{r}
+mp18 <- xtabs(COEFFY ~ FTPT + WISHMORE, data=IT_F)
+prop.table(mp18,1)
+```
+\
+
+\
+```{r}
+mp19 <- xtabs(COEFFY ~ FTPTREAS, data=IT_F)
+prop.table(mp19)
+```
+\
+
+\
+```{r}
+mp20 <- xtabs(COEFFY ~ NEEDCARE, data=IT_F)
+prop.table(mp20)
+```
+\
+
+
+#STATISTICHE DESCRITTIVE
+
+Aggiungo al dataset IT_F le variabili *EDU_TER*, *TFT*, *RED_FAM*, *UNIFAM*, *SPOSFAM*, *MAMFAM* e *MULTIFAM* aggregate a livello regionale contenute nel file "merge1.xlsx" creando il dataset IT_F_COMPLETO; mantengo nel dataset solo le variabili che verranno inserite nel modello multilivello iniziale:
+\
+```{r}
+data_merge_IT <- read_excel("merge1.xlsx", sheet = 1)
+
+data_merge_IT$REGION_2D=as.factor(data_merge_IT$REGION_2D)
+
+
+IT_F_COMPLETO <- merge(IT_F, data_merge_IT, by.x = "REGION_2D", by.y = "REGION_2D", all.x = TRUE, all.y = TRUE)
+
+
+IT_F_COMPLETO$HHNUM <- NULL
+IT_F_COMPLETO$HHSEQNUM <- NULL
+IT_F_COMPLETO$COBFATH <- NULL
+IT_F_COMPLETO$COBMOTH <- NULL
+IT_F_COMPLETO$HHNUM <- NULL
+IT_F_COMPLETO$AGERESID <- NULL
+IT_F_COMPLETO$COUNTRPR <- NULL
+IT_F_COMPLETO$HHLINK <- NULL
+IT_F_COMPLETO$HHSPOU <- NULL
+IT_F_COMPLETO$WKSTAT <- NULL
+IT_F_COMPLETO$ABSREAS <- NULL
+IT_F_COMPLETO$JATTACH <- NULL
+IT_F_COMPLETO$NUMJOB <- NULL
+IT_F_COMPLETO$SEEKWORK <- NULL
+IT_F_COMPLETO$WANTWORK <- NULL
+IT_F_COMPLETO$SEEKREAS <- NULL
+IT_F_COMPLETO$WANTREAS <- NULL
+IT_F_COMPLETO$ACTMETNE <- NULL
+IT_F_COMPLETO$WISHMORE <- NULL
+IT_F_COMPLETO$AVAILBLE <- NULL
+IT_F_COMPLETO$AVAIREAS <- NULL
+IT_F_COMPLETO$ILOSTAT <- NULL
+IT_F_COMPLETO$COUNTRYW <- NULL
+IT_F_COMPLETO$REGION_2DW <- NULL
+IT_F_COMPLETO$HOMEWORK <- NULL
+IT_F_COMPLETO$STAPRO <- NULL
+IT_F_COMPLETO$FTPT <- NULL
+IT_F_COMPLETO$TEMP <- NULL
+IT_F_COMPLETO$TEMPDUR <- NULL
+IT_F_COMPLETO$TEMPREAS <- NULL
+IT_F_COMPLETO$TEMPAGCY <- NULL
+IT_F_COMPLETO$FTPTREAS <- NULL
+IT_F_COMPLETO$VARITIME <- NULL
+IT_F_COMPLETO$SUPVISOR <- NULL
+IT_F_COMPLETO$LOOKOJ <- NULL
+IT_F_COMPLETO$HWWISH <- NULL
+IT_F_COMPLETO$SEEKDUR <- NULL
+IT_F_COMPLETO$NEEDCARE <- NULL
+IT_F_COMPLETO$MAINSTAT <- NULL
+IT_F_COMPLETO$HATLEV1D <- NULL
+IT_F_COMPLETO$YSTARTWK <- NULL
+IT_F_COMPLETO$STARTIME <- NULL
+IT_F_COMPLETO$WAYJFOUN <- NULL
+IT_F_COMPLETO$FINDMETH <- NULL
+IT_F_COMPLETO$EXISTPR <- NULL
+IT_F_COMPLETO$YEARPR <- NULL
+IT_F_COMPLETO$LEAVTIME <- NULL
+IT_F_COMPLETO$DURUNE <- NULL
+IT_F_COMPLETO$LEAVREAS <- NULL
+IT_F_COMPLETO$HWUSUAL <- NULL
+IT_F_COMPLETO$SHIFTWK <- NULL
+IT_F_COMPLETO$EVENWK <- NULL
+IT_F_COMPLETO$NIGHTWK <- NULL
+IT_F_COMPLETO$SATWK <- NULL
+IT_F_COMPLETO$SUNWK <- NULL
+IT_F_COMPLETO$EDUC4WEEKS <- NULL
+IT_F_COMPLETO$HHNBCH0TO14 <- NULL
+IT_F_COMPLETO$HHNBCHILD <- NULL
+IT_F_COMPLETO$HHNBADULT <- NULL
+IT_F_COMPLETO$HHNBPERS <- NULL
+IT_F_COMPLETO$HHNBALLEMPL <- NULL
+IT_F_COMPLETO$HHNBADEMPL <- NULL
+IT_F_COMPLETO$HHNBADUNEMP <- NULL
+IT_F_COMPLETO$HHWKSTAT <- NULL
+IT_F_COMPLETO$HHJOBLESS <- NULL
+IT_F_COMPLETO$HHCOMP <- NULL
+IT_F_COMPLETO$HHCHILDR <- NULL
+IT_F_COMPLETO$HHNBCH9TO11 <- NULL
+IT_F_COMPLETO$HHNBCH12TO14 <- NULL
+IT_F_COMPLETO$HHNBCH15TO17 <- NULL
+IT_F_COMPLETO$REFYEAR <- NULL
+IT_F_COMPLETO$YEAR <- NULL
+IT_F_COMPLETO$COUNTRY <- NULL
+
+#str(IT_F_COMPLETO)
+```
+\
+
+Statistiche descrittive pesate per *COEFFY* relative alle variabili numeriche contenute in IT_F_COMPLETO:
+\
+```{r}
+IT_F_COMPLETO_parz <- subset(IT_F_COMPLETO, select = -c(EDU_TER, TFT, RED_FAM, UNIFAM, SPOSFAM, MAMFAM, MULTIFAM))
+VAR_NUM <- IT_F_COMPLETO_parz %>% select_if(is.numeric) %>% names()
+IT_F_COMPLETO_pesato <- IT_F_COMPLETO_parz %>% mutate_at(vars(all_of(VAR_NUM)), ~ . * COEFFY)
+describe(IT_F_COMPLETO_pesato)
+```
+\
+
+Statistiche descrittive pesate per *COEFFY* relative alle variabili categoriali contenute in IT_F_COMPLETO:
+\
+```{r}
+design <- svydesign(ids = ~1, data = IT_F_COMPLETO, weights = ~COEFFY)
+freq_table <- lapply(names(IT_F_COMPLETO)[sapply(IT_F_COMPLETO, is.factor)], 
+                      function(var_name) {
+                        cat("Variable name: ", var_name, "\n")
+                        prop.table(svytable(as.formula(paste("~", var_name)), design))
+                      })
+freq_table
+```
+\
+
+Statistiche descrittive per le variabili *EDU_TER*, *TFT*, *RED_FAM*, *UNIFAM*, *SPOSFAM*, *MAMFAM* e *MULTIFAM* (i valori di queste variabili non devono essere pesati in quanto si tratta di variabili aggregate a livello regionale):
+\
+```{r}
+describe(IT_F_COMPLETO$EDU_TER)
+describe(IT_F_COMPLETO$TFT)
+describe(IT_F_COMPLETO$RED_FAM)
+describe(IT_F_COMPLETO$UNIFAM)
+describe(IT_F_COMPLETO$SPOSFAM)
+describe(IT_F_COMPLETO$MAMFAM)
+describe(IT_F_COMPLETO$MULTIFAM)
+```
+\
+
+Test di significatività delle variabili:
+\
+```{r warning=FALSE}
+log1 <- glm(EMPSTAT ~ HHNBCH0TO2, data = IT_F_COMPLETO, weights = COEFFY, family = binomial)
+summary(log1)
+
+log2 <- glm(EMPSTAT ~ HHNBCH3TO5, data = IT_F_COMPLETO, weights = COEFFY, family = binomial)
+summary(log2)
+
+log3 <- glm(EMPSTAT ~ HHNBCH6TO8, data = IT_F_COMPLETO, weights = COEFFY, family = binomial)
+summary(log3)
+
+log4 <- glm(EMPSTAT ~ HHNBCH9TO17, data = IT_F_COMPLETO, weights = COEFFY, family = binomial)
+summary(log4)
+
+log5 <- glm(EMPSTAT ~ HHNBOLD, data = IT_F_COMPLETO, weights = COEFFY, family = binomial)
+summary(log5)
+
+log6 <- glm(EMPSTAT ~ HHNBADOUTLF, data = IT_F_COMPLETO, weights = COEFFY, family = binomial)
+summary(log6)
+
+log7 <- glm(EMPSTAT ~ EDU_TER, data = IT_F_COMPLETO, family = binomial)
+summary(log7)
+
+log8 <- glm(EMPSTAT ~ TFT, data = IT_F_COMPLETO, family = binomial)
+summary(log8)
+
+log9 <- glm(EMPSTAT ~ RED_FAM, data = IT_F_COMPLETO, family = binomial)
+summary(log9)
+
+log10 <- glm(EMPSTAT ~ UNIFAM, data = IT_F_COMPLETO, family = binomial)
+summary(log10)
+
+log11 <- glm(EMPSTAT ~ SPOSFAM, data = IT_F_COMPLETO, family = binomial)
+summary(log11)
+
+log12 <- glm(EMPSTAT ~ MAMFAM, data = IT_F_COMPLETO, family = binomial)
+summary(log12)
+
+log13 <- glm(EMPSTAT ~ MULTIFAM, data = IT_F_COMPLETO, family = binomial)
+summary(log13)
+
+
+log14 <- glm(EMPSTAT ~ DEGURBA, data = IT_F_COMPLETO, weights = COEFFY, family = binomial)
+anova(log14, test = "Chisq")
+
+log15 <- glm(EMPSTAT ~ AGE_GRP, data = IT_F_COMPLETO, weights = COEFFY, family = binomial)
+anova(log15, test = "Chisq")
+
+log16 <- glm(EMPSTAT ~ COUNTRYB_mod, data = IT_F_COMPLETO, weights = COEFFY, family = binomial)
+anova(log16, test = "Chisq")
+
+log17 <- glm(EMPSTAT ~ CITIZENSHIP_mod, data = IT_F_COMPLETO, weights = COEFFY, family = binomial)
+anova(log17, test = "Chisq")
+
+log18 <- glm(EMPSTAT ~ YEARESID_mod, data = IT_F_COMPLETO, weights = COEFFY, family = binomial)
+anova(log18, test = "Chisq")
+
+log19 <- glm(EMPSTAT ~ HATLEVEL_mod, data = IT_F_COMPLETO, weights = COEFFY, family = binomial)
+anova(log19, test = "Chisq")
+
+log20 <- glm(EMPSTAT ~ REGISTER, data = IT_F_COMPLETO, weights = COEFFY, family = binomial)
+anova(log20, test = "Chisq")
+
+log21 <- glm(EMPSTAT ~ HATFIELD_mod, data = IT_F_COMPLETO, weights = COEFFY, family = binomial)
+anova(log21, test = "Chisq")
+
+log22 <- glm(EMPSTAT ~ HHPARENT, data = IT_F_COMPLETO, weights = COEFFY, family = binomial)
+anova(log22, test = "Chisq")
+
+log23 <- glm(EMPSTAT ~ HHPARTNR, data = IT_F_COMPLETO, weights = COEFFY, family = binomial)
+anova(log23, test = "Chisq")
+```
+\
+
+
+#MODELLI MULTILEVEL
+##MODELLO INIZIALE
+
+\
+```{r}
+for (col in names(IT_F_COMPLETO)) {
+  if (sum(is.na(IT_F_COMPLETO[[col]])) > 0) {
+    cat(col, ": ", sum(is.na(IT_F_COMPLETO[[col]])), " missing values\n")
+  }
+}
+```
+\
+
+Escludo le osservazioni contenenti valori mancanti dal dataset IT_F_COMPLETO:
+\
+```{r}
+IT_F_COMPLETO <- na.omit(IT_F_COMPLETO)
+```
+\
+
+
+MODELLO DI REGRESSIONE LOGISTICA A EFFETTI MISTI CON PREDITTORI DI SECONDO LIVELLO:
+\
+```{r warning=FALSE}
+mod_StartIT <- glmer(EMPSTAT ~ DEGURBA + AGE_GRP + COUNTRYB_mod + CITIZENSHIP_mod + YEARESID_mod + HATLEVEL_mod + REGISTER + HATFIELD_mod + HHNBCH0TO2 + HHNBCH3TO5 + HHNBCH6TO8 + HHNBCH9TO17 + HHNBOLD + HHNBADOUTLF + HHPARENT + HHPARTNR + EDU_TER + TFT + RED_FAM + UNIFAM + SPOSFAM + MAMFAM + MULTIFAM + (1 | REGION_2D), data = IT_F_COMPLETO, weights = COEFFY, family = binomial, control = glmerControl(optimizer = "bobyqa"), nAGQ = 10)
+summary(mod_StartIT)
+```
+\
+Trasformazione esponenziale delle stime degli effetti fissi per ottenere gli odds ratio:
+\
+```{r}
+OR <- exp(coef(summary(mod_StartIT)))
+print(OR)
+```
+\
+
+
+###Verifiche su *mod_StartIT*
+1. Verifico se sussiste il problema della varianza nulla
+1.1 per le variabili numeriche:
+\
+```{r}
+num <- sapply(IT_F_COMPLETO, function(x) is.numeric(x)) 
+numdata <- IT_F_COMPLETO[, num]
+sapply(numdata, function(x) var(x,na.rm=TRUE))
+```
+\
+
+1.2 per le variabili categoriali:
+\
+```{r}
+nzv = nearZeroVar(IT_F_COMPLETO, saveMetrics = TRUE)
+head(nzv[order(nzv$percentUnique, decreasing = FALSE), ], n = 20)
+```
+\
+
+
+2. Verifico se sussiste il problema della perfetta collinearità
+2.1 per le variabili numeriche:
+\
+```{r}
+cov = attr(terms(mod_StartIT), "term.labels") 
+b_numeric <- IT_F_COMPLETO[,cov]%>% dplyr::select_if(is.numeric)
+corrgram(b_numeric, lower.panel = panel.cor, cex=1, cex.labels = 1)
+```
+\
+
+2.2 per le variabili categoriali:
+\
+```{r warning=FALSE}
+cov_used=attr(terms(mod_StartIT), "term.labels")
+
+b_factor <- IT_F_COMPLETO[, cov_used]%>% dplyr::select_if(is.factor)
+
+combos <- combn(ncol(b_factor),2)
+adply(combos, 2, function(x) {
+  test <- chisq.test(b_factor[, x[1]], b_factor[, x[2]])
+  tab  <- table(b_factor[, x[1]], b_factor[, x[2]])
+  out <- data.frame("Row" = colnames(b_factor)[x[1]]
+                    , "Column" = colnames(b_factor[x[2]])
+                    , "Chi.Square" = round(test$statistic,3)
+                    , "df"= test$parameter
+                    , "p.value" = round(test$p.value, 3)
+                    , "n" = sum(table(b_factor[,x[1]], b_factor[,x[2]]))
+                    , "u1" =length(unique(b_factor[,x[1]]))-1
+                    , "u2" =length(unique(b_factor[,x[2]]))-1
+                    , "nMinu1u2" =sum(table(b_factor[,x[1]], b_factor[,x[2]]))* min(length(unique(b_factor[,x[1]]))-1 , length(unique(b_factor[,x[2]]))-1) 
+                    , "Chi.Square norm"  =test$statistic/(sum(table(b_factor[,x[1]], b_factor[,x[2]]))* min(length(unique(b_factor[,x[1]]))-1 , length(unique(b_factor[,x[2]]))-1)) 
+  )
+  return(out)
+})
+```
+\
+
+
+3. Verifico l'esistenza di near-separation o separation:
+\
+```{r}
+table(IT_F_COMPLETO$DEGURBA, IT_F_COMPLETO$EMPSTAT)
+table(IT_F_COMPLETO$AGE_GRP, IT_F_COMPLETO$EMPSTAT)
+table(IT_F_COMPLETO$REGISTER, IT_F_COMPLETO$EMPSTAT)
+table(IT_F_COMPLETO$HHPARTNR, IT_F_COMPLETO$EMPSTAT)
+table(IT_F_COMPLETO$HHPARENT, IT_F_COMPLETO$EMPSTAT)
+table(IT_F_COMPLETO$YEARESID_mod, IT_F_COMPLETO$EMPSTAT)
+table(IT_F_COMPLETO$HATLEVEL_mod, IT_F_COMPLETO$EMPSTAT)
+table(IT_F_COMPLETO$COUNTRYB_mod, IT_F_COMPLETO$EMPSTAT)
+table(IT_F_COMPLETO$HATFIELD_mod, IT_F_COMPLETO$EMPSTAT)
+table(IT_F_COMPLETO$CITIZENSHIP_mod, IT_F_COMPLETO$EMPSTAT)
+```
+\
+
+
+
+##MODELLO VARIABILI SIGNIFICATIVE
+
+Elimino le covariate *COUNTRYB_mod*, *HATFIELD_mod*, *SPOSFAM* e *MULTIFAM* dal modello *mod_StartIT* e ottengo il modello ridotto *mod_VarSigIT*:
+\
+```{r warning=FALSE}
+mod_VarSigIT <- glmer(EMPSTAT ~ DEGURBA + AGE_GRP + CITIZENSHIP_mod + YEARESID_mod + HATLEVEL_mod + REGISTER + HHNBCH0TO2 + HHNBCH3TO5 + HHNBCH6TO8 + HHNBCH9TO17 + HHNBOLD + HHNBADOUTLF + HHPARENT + HHPARTNR + EDU_TER + TFT + RED_FAM + UNIFAM + MAMFAM + (1 | REGION_2D), data = IT_F_COMPLETO, weights = COEFFY, family = binomial, control = glmerControl(optimizer = "bobyqa"), nAGQ = 10)
+summary(mod_VarSigIT)
+```
+\
+Odds ratio:
+\
+```{r}
+OR <- exp(coef(summary(mod_VarSigIT)))
+print(OR)
+```
+\
+
+Grafico dei coefficienti relativi al modello *mod_VarSigIT*:
+\
+```{r}
+coefplotIT <- coefplot(mod_VarSigIT, decreasing = TRUE, sort = "magnitude", intercept = FALSE, color = "black", title = "")
+ggsave("grafico_coefplotIT.png", coefplotIT)
+```
+\
+
+
+###Test del rapporto di verosimiglianza
+Confronto i modelli *mod_StartIT* e *mod_VarSigIT* mediante il test del rapporto di verosimiglianza:
+\
+```{r}
+anova(mod_StartIT, mod_VarSigIT, test = "LRT")
+```
+\
+
+
+
+#Verifiche utili per l'analisi
+\
+```{r}
+all.equal(ds_IT_F$COEFFY, ds_IT_F$COEFFHH, ds_IT_F$COEFFHHAVG, ds_IT_F$COEFF2Y)
+```
+\
+
+\
+```{r}
+stessi_valori <- sum(IT_F$CITIZENSHIP == IT_F$COUNTRYB)
+diversi_valori <- sum(IT_F$CITIZENSHIP != IT_F$COUNTRYB)
+
+cat("Osservazioni con gli stessi valori:", stessi_valori, "\n")
+cat("Osservazioni con valori diversi:", diversi_valori, "\n")
+```
+\
+
