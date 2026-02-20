@@ -90,12 +90,9 @@ For full details, refer to the thesis document and the R Markdown script.
 
 ## Files
 
-- `code_Italy.Rmd`, `code_France.Rmd`, `code_Germany.Rmd`: R Markdown file with the full data preparation, variable recoding, descriptive statistics and multilevel logistic regression models (and structure for the other countries).
+- `code_Italy.Rmd`, `code_France.Rmd`, `code_Germany.Rmd`: R Markdown file with the full data preparation, variable recoding, descriptive statistics and multilevel logistic regression models.
 
 - `ElaboratoTesiTriennale_PERRELLI.pdf`: Final thesis document (in Italian) describing the context, data, methodology, results and conclusions.
-
-- `data/` *(not included)*  
-  Folder where you should place the EU‑LFS microdata for Italy, France and Germany (not redistributed here due to Eurostat licence restrictions). File names and paths must be adapted in the R Markdown accordingly.
 
 ---
 
